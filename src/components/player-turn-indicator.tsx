@@ -15,34 +15,50 @@ interface PlayerTurnIndicatorProps {
 export function PlayerTurnIndicator({ isMyTurn, currentPlayerId, playerProfiles }: PlayerTurnIndicatorProps) {
   let displayName = "Opponent";
   let avatarUrl: string | undefined = undefined;
+  let displayText = "Opponent's Turn";
 
   if (isMyTurn && currentPlayerId) {
     const profile = playerProfiles[currentPlayerId];
-    displayName = profile?.username || "Your";
+    displayName = profile?.username || "You"; // Default to "You" if no username
     avatarUrl = profile?.avatarUrl;
-  } else if (!isMyTurn) {
-    // In a real multiplayer game, we'd have the opponent's ID and profile
-    // For now, it remains generic "Opponent"
-    // If we had an opponentId, it would be:
-    // const opponentProfile = playerProfiles[opponentId];
-    // displayName = opponentProfile?.username || "Opponent";
-    // avatarUrl = opponentProfile?.avatarUrl;
+    if (displayName === "You") {
+      displayText = "Your Turn";
+    } else {
+      displayText = `${displayName}'s Turn`;
+    }
+  } else {
+    // Potentially find an opponent's name if only two players and IDs are known
+    // For now, default to "Opponent's Turn"
+    const opponentIds = Object.keys(playerProfiles).filter(id => id !== currentPlayerId);
+    if (opponentIds.length === 1) {
+      const opponentProfile = playerProfiles[opponentIds[0]];
+      if (opponentProfile && opponentProfile.username) {
+        displayText = `${opponentProfile.username}'s Turn`;
+        avatarUrl = opponentProfile.avatarUrl; // Show opponent avatar when it's their turn
+        displayName = opponentProfile.username;
+      } else {
+         displayText = "Opponent's Turn";
+      }
+    } else {
+      displayText = "Opponent's Turn";
+    }
   }
 
 
   return (
     <div className="flex items-center gap-2">
-      {isMyTurn && avatarUrl ? (
+      {avatarUrl ? (
         <Avatar className="h-6 w-6">
           <AvatarImage src={avatarUrl} alt={displayName} data-ai-hint="abstract avatar"/>
-          <AvatarFallback className="text-xs">{displayName.substring(0,1)}</AvatarFallback>
+          <AvatarFallback className="text-xs">{displayName.substring(0,1).toUpperCase()}</AvatarFallback>
         </Avatar>
       ) : (
          <User className="w-5 h-5 text-primary" />
       )}
       <Badge variant={isMyTurn ? "default" : "secondary"} className="text-sm font-semibold whitespace-nowrap">
-        {isMyTurn ? `${displayName}'s Turn` : `${displayName}'s Turn`}
+        {displayText}
       </Badge>
     </div>
   );
 }
+

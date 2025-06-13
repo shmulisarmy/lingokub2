@@ -37,7 +37,7 @@ const generatePlayerId = () => `player-${Math.random().toString(36).substring(2,
 export default function LingoKubPage() {
   const [gridState, setGridState] = useState<GridState>(initialGridState());
   const [playerCards, setPlayerCards] = useState<WordCardData[]>(initialPlayerCards);
-  const [isMyTurn, setIsMyTurn] = useState<boolean>(true);
+  const [isMyTurn, setIsMyTurn] = useState<boolean>(false); // Default to false
   const [opponentIsPlaying, setOpponentIsPlaying] = useState<boolean>(false);
   const [invalidCells, setInvalidCells] = useState<{ row: number; col: number }[]>([]);
   const [chatMessages, setChatMessages] = useState<ChatMessageData[]>([]);
@@ -56,41 +56,40 @@ export default function LingoKubPage() {
 
   const connectWebSocket = useCallback((playerId: string) => {
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-      // console.log("WebSocket already connected");
       return;
     }
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    // Pass playerId as a query parameter
     const wsUrl = `${wsProtocol}//${window.location.host}/ws?playerId=${playerId}`;
-    // console.log("Connecting to WebSocket:", wsUrl);
 
     ws.current = new WebSocket(wsUrl);
 
     ws.current.onopen = () => {
-      // console.log('WebSocket connected with player ID:', playerId);
-      // If profile exists from localStorage, send it.
       const storedProfileRaw = localStorage.getItem('lingokubUserProfile');
       if (storedProfileRaw) {
         try {
           const storedProfile = JSON.parse(storedProfileRaw) as PlayerProfile;
           if (storedProfile.username && storedProfile.avatarUrl) {
-             setLocalPlayerProfile(storedProfile); // also update local state
+             setLocalPlayerProfile(storedProfile); 
              const profileUpdateMsg: WebSocketMessage = {
                 type: 'PROFILE_UPDATE',
                 payload: { playerId, ...storedProfile }
              };
              ws.current?.send(JSON.stringify(profileUpdateMsg));
+          } else {
+            setIsProfileDialogOpen(true); 
           }
-        } catch (e) { console.error("Error parsing stored profile", e); }
+        } catch (e) { 
+          console.error("Error parsing stored profile", e); 
+          setIsProfileDialogOpen(true);
+        }
       } else {
-        setIsProfileDialogOpen(true); // Prompt for profile if not found
+        setIsProfileDialogOpen(true); 
       }
     };
 
     ws.current.onmessage = (event) => {
       try {
         const message = JSON.parse(event.data as string) as WebSocketMessage;
-        // console.log('Message from server:', message);
 
         if (message.type === 'CHAT_MESSAGE') {
           setChatMessages((prevMessages) => [...prevMessages, message.payload as ChatMessageData]);
@@ -104,8 +103,14 @@ export default function LingoKubPage() {
              text: systemMessageText,
              timestamp: Date.now()
            }]);
-           // Optionally toast system messages
-           // toast({ title: "System Message", description: systemMessageText });
+        } else if (message.type === 'SET_INITIAL_TURN') {
+          const turnPayload = message.payload as {isMyTurn: boolean};
+          setIsMyTurn(turnPayload.isMyTurn);
+          if (turnPayload.isMyTurn) {
+            toast({ title: "Game Start", description: "It's your turn!"});
+          } else {
+            toast({ title: "Game Start", description: "Waiting for opponent."});
+          }
         }
 
       } catch (error) {
@@ -114,7 +119,6 @@ export default function LingoKubPage() {
     };
 
     ws.current.onclose = () => {
-      // console.log('WebSocket disconnected');
       toast({ title: "Chat Disconnected", description: "You've been disconnected from the chat.", variant: "destructive" });
     };
 
@@ -122,7 +126,7 @@ export default function LingoKubPage() {
       console.error('WebSocket error:', error);
       toast({ title: "Chat Connection Error", description: "Could not connect to the chat server.", variant: "destructive" });
     };
-  }, [toast]);
+  }, [toast]); // Removed localPlayerProfile from dependencies to avoid re-connecting on profile change
 
 
   useEffect(() => {
@@ -135,7 +139,6 @@ export default function LingoKubPage() {
       localStorage.setItem('lingokubPlayerId', currentId);
     }
     setLocalPlayerId(currentId);
-    // console.log("Local Player ID:", currentId);
 
     const storedProfileRaw = localStorage.getItem('lingokubUserProfile');
     if (storedProfileRaw) {
@@ -144,16 +147,14 @@ export default function LingoKubPage() {
             if (storedProfile.username && storedProfile.avatarUrl) {
                 setLocalPlayerProfile(storedProfile);
             } else {
-                setIsProfileDialogOpen(true); // Incomplete profile, prompt again
+                 // Profile dialog will be triggered by connectWebSocket if needed
             }
         } catch (e) {
             console.error("Error parsing stored profile on init", e);
-            localStorage.removeItem('lingokubUserProfile'); // Clear corrupted data
-            setIsProfileDialogOpen(true);
+            localStorage.removeItem('lingokubUserProfile'); 
         }
-    } else {
-        setIsProfileDialogOpen(true); // No profile, prompt
-    }
+    } 
+    // Profile dialog is triggered in connectWebSocket onopen if profile isn't set up
     
     if (currentId) {
       connectWebSocket(currentId);
@@ -166,6 +167,7 @@ export default function LingoKubPage() {
 
 
   useEffect(() => {
+    // This effect now reflects the server-driven or initial assignment of isMyTurn
     setOpponentIsPlaying(!isMyTurn);
   }, [isMyTurn]);
 
@@ -266,7 +268,7 @@ export default function LingoKubPage() {
     setPlayerCards(newPlayerCards);
     setCardsPlacedThisTurn(newCardsPlacedThisTurn);
     
-    if (droppedCard.word === "FOX") { // Example validation
+    if (droppedCard.word === "FOX") { 
         setInvalidCells([{row: targetRow, col: targetCol}]);
         toast({ title: "Invalid Placement", description: "FOX cannot be placed here (mock rule).", variant: "destructive" });
     } else {
@@ -327,35 +329,44 @@ export default function LingoKubPage() {
     };
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
       ws.current.send(JSON.stringify(endTurnSystemMessage));
-    } else { // local fallback
+    } else { 
       setChatMessages(prev => [...prev, {id: Date.now().toString(), sender:'system', text: `${playerDisplayName} ended their turn.`, timestamp: Date.now()}]);
     }
 
     toast({ title: "Turn Ended", description: "Waiting for opponent." });
-    setIsMyTurn(false);
+    setIsMyTurn(false); // Current player's turn ends locally
     setCardsPlacedThisTurn([]); 
     
-    setTimeout(() => {
-        const opponentDisplayName = 'Opponent'; // In a real game, this would be dynamic
-        const opponentTurnSystemMessage: WebSocketMessage = {
-            type: 'SYSTEM_MESSAGE',
-            payload: { text: `${opponentDisplayName} made a move. Your turn, ${playerProfiles[localPlayerId]?.username || localPlayerId}!` }
-        };
-         if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-            ws.current.send(JSON.stringify(opponentTurnSystemMessage));
-        } else { // local fallback
-            setChatMessages(prev => [...prev, {id: Date.now().toString(), sender:'system', text: `${opponentDisplayName} made a move. Your turn, ${playerProfiles[localPlayerId]?.username || localPlayerId}!`, timestamp: Date.now()}]);
-        }
-        toast({ title: "Your Turn!", description: "Opponent has finished their move." });
-        setIsMyTurn(true);
-    }, 3000); // Reduced opponent turn time for quicker testing
+    // Server will now dictate who's turn it is next via SET_INITIAL_TURN or a new TURN_UPDATE message
+    // The setTimeout for opponent simulation is removed as server should control turn flow
+    // For now, with SET_INITIAL_TURN, only one player actively plays.
+    // To make it switch, server needs to handle END_TURN message and assign next player.
+    
+    // Placeholder for proper server-driven turn change:
+    // If we want to keep the local simulation for the active player:
+    if (localPlayerId === Object.keys(playerProfiles)[0] ) { // Hack: if I am the "first" player
+        setTimeout(() => {
+            const opponentDisplayName = 'Opponent'; 
+            const opponentTurnSystemMessage: WebSocketMessage = {
+                type: 'SYSTEM_MESSAGE',
+                payload: { text: `${opponentDisplayName} made a move. Your turn, ${playerProfiles[localPlayerId]?.username || localPlayerId}!` }
+            };
+             if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+                ws.current.send(JSON.stringify(opponentTurnSystemMessage));
+            } else { 
+                setChatMessages(prev => [...prev, {id: Date.now().toString(), sender:'system', text: `${opponentDisplayName} made a move. Your turn, ${playerProfiles[localPlayerId]?.username || localPlayerId}!`, timestamp: Date.now()}]);
+            }
+            toast({ title: "Your Turn!", description: "Opponent has finished their move." });
+            setIsMyTurn(true); // Give turn back to self if simulating
+        }, 3000);
+    }
   };
   
   const handleNewGame = () => {
     setGridState(initialGridState());
     setPlayerCards(initialPlayerCards);
     setMockDeck(initialMockDeck);
-    setIsMyTurn(true); 
+    // setIsMyTurn(true); // Initial turn will be set by server now
     setOpponentIsPlaying(false);
     setInvalidCells([]);
     setCardsPlacedThisTurn([]);
@@ -366,10 +377,12 @@ export default function LingoKubPage() {
     };
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
         ws.current.send(JSON.stringify(newGameSystemMessage));
+        // Potentially, server should reset its 'isFirstPlayerTurnAssigned' and re-assign turn
+        // For now, client that clicks new game might not immediately get the turn unless server logic is added for this.
     } else {
         setChatMessages(prev => [...prev, { id: Date.now().toString(), sender: 'system', text: (newGameSystemMessage.payload as {text: string}).text, timestamp: Date.now()}]);
     }
-    toast({ title: "New Game", description: "The board has been reset." });
+    toast({ title: "New Game", description: "The board has been reset. Turn order may be reset by server." });
   };
 
   const handleDrawCard = () => {
@@ -386,16 +399,7 @@ export default function LingoKubPage() {
       setMockDeck(newDeck);
       toast({ title: "Card Drawn", description: `You drew: ${drawnCard.word}`});
       
-      const playerDisplayName = playerProfiles[localPlayerId]?.username || localPlayerId || 'Current Player';
-      const drawCardSystemMessage: WebSocketMessage = {
-        type: 'SYSTEM_MESSAGE',
-        payload: { text: `${playerDisplayName} drew a card and ended their turn.` }
-      };
-      if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-         ws.current.send(JSON.stringify(drawCardSystemMessage));
-      } else {
-         setChatMessages(prev => [...prev, { id: Date.now().toString(), sender: 'system', text: (drawCardSystemMessage.payload as {text: string}).text, timestamp: Date.now()}]);
-      }
+      // Drawing a card now also ends the turn using the same logic
       handleEndTurn(); 
     }
   };
@@ -475,3 +479,4 @@ export default function LingoKubPage() {
     </div>
   );
 }
+
