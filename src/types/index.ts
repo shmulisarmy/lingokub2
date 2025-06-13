@@ -6,8 +6,8 @@ export interface WordCardData {
 export type GridState = (WordCardData | null)[][];
 
 export interface ChatMessageData {
-  id: string;
-  sender: string; // 'player1', 'player2', 'system'
+  id: string; // Should be unique per message
+  sender: string; // e.g., 'player-xyz', 'system'
   text: string;
   timestamp: number;
 }

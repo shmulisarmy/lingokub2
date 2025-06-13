@@ -1,7 +1,8 @@
+
 "use client";
 
 import type React from 'react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { GameGrid } from '@/components/game-grid';
 import { PlayerHand } from '@/components/player-hand';
 import { PlayerTurnIndicator } from '@/components/player-turn-indicator';
@@ -16,7 +17,6 @@ import { Dices, PlusSquare } from 'lucide-react';
 const ROWS = 5;
 const COLS = 8;
 
-// Initial game data (mocked)
 const initialPlayerCards: WordCardData[] = [
   { id: 'pcard-1', word: 'THE' }, { id: 'pcard-2', word: 'QUICK' },
   { id: 'pcard-3', word: 'BROWN' }, { id: 'pcard-4', word: 'FOX' },
@@ -34,7 +34,7 @@ const initialGridState = (): GridState => Array(ROWS).fill(null).map(() => Array
 export default function LingoKubPage() {
   const [gridState, setGridState] = useState<GridState>(initialGridState());
   const [playerCards, setPlayerCards] = useState<WordCardData[]>(initialPlayerCards);
-  const [isMyTurn, setIsMyTurn] = useState<boolean>(true);
+  const [isMyTurn, setIsMyTurn] = useState<boolean>(true); // This will need to be managed by server in full MP
   const [opponentIsPlaying, setOpponentIsPlaying] = useState<boolean>(false);
   const [invalidCells, setInvalidCells] = useState<{ row: number; col: number }[]>([]);
   const [chatMessages, setChatMessages] = useState<ChatMessageData[]>([]);
@@ -42,24 +42,85 @@ export default function LingoKubPage() {
   const [cardsPlacedThisTurn, setCardsPlacedThisTurn] = useState<CardPlacedThisTurn[]>([]);
   const [mockDeck, setMockDeck] = useState<WordCardData[]>(initialMockDeck);
   const { toast } = useToast();
-
-  const currentPlayerId = "player1"; 
+  
+  const [localPlayerId, setLocalPlayerId] = useState<string>('');
+  const ws = useRef<WebSocket | null>(null);
 
   useEffect(() => {
-    if (currentPlayerId === "player1") {
-        addChatMessage("system", "Waiting for opponent...");
-        setTimeout(() => {
-            addChatMessage("system", "Player 2 joined! Your turn.");
-        }, 2000);
-    } else {
-        addChatMessage("system", "You joined the game. Waiting for Player 1's turn.");
-        setIsMyTurn(false);
-    }
-  }, [toast]); // Removed currentPlayerId from deps as it's constant
+    // Generate a unique ID for this client session for chat
+    const generatedId = `player-${Math.random().toString(36).substring(2, 7)}`;
+    setLocalPlayerId(generatedId);
+    console.log("Local Player ID:", generatedId);
+
+    // Determine WebSocket protocol based on window.location.protocol
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${wsProtocol}//${window.location.host}/ws`;
+    console.log("Connecting to WebSocket:", wsUrl);
+
+    ws.current = new WebSocket(wsUrl);
+
+    ws.current.onopen = () => {
+      console.log('WebSocket connected');
+      // Send a "joined" message - this is optional, server already logs connection
+      // const joinMessage: ChatMessageData = {
+      //   id: Date.now().toString(),
+      //   sender: generatedId, // Use the generated ID
+      //   text: `${generatedId} has joined the chat.`,
+      //   timestamp: Date.now(),
+      // };
+      // ws.current?.send(JSON.stringify(joinMessage));
+      // Or a system message can be added locally or sent by server
+       setChatMessages(prev => [...prev, {
+         id: Date.now().toString(),
+         sender: 'system',
+         text: 'Connected to chat. Welcome!',
+         timestamp: Date.now()
+       }]);
+    };
+
+    ws.current.onmessage = (event) => {
+      try {
+        const receivedMsg = JSON.parse(event.data as string) as ChatMessageData;
+        // console.log('Message from server:', receivedMsg);
+        setChatMessages((prevMessages) => [...prevMessages, receivedMsg]);
+      } catch (error) {
+        console.error('Failed to parse message from server or update chat:', error);
+         setChatMessages(prev => [...prev, {
+           id: Date.now().toString(),
+           sender: 'system',
+           text: 'Received an unreadable message.',
+           timestamp: Date.now()
+         }]);
+      }
+    };
+
+    ws.current.onclose = () => {
+      console.log('WebSocket disconnected');
+      toast({ title: "Chat Disconnected", description: "You've been disconnected from the chat.", variant: "destructive" });
+       setChatMessages(prev => [...prev, {
+         id: Date.now().toString(),
+         sender: 'system',
+         text: 'Disconnected from chat server.',
+         timestamp: Date.now()
+       }]);
+    };
+
+    ws.current.onerror = (error) => {
+      console.error('WebSocket error:', error);
+      toast({ title: "Chat Connection Error", description: "Could not connect to the chat server.", variant: "destructive" });
+    };
+
+    // Cleanup WebSocket connection on component unmount
+    return () => {
+      ws.current?.close();
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [toast]); // localPlayerId is set once, toast for notifications
 
   useEffect(() => {
     setOpponentIsPlaying(!isMyTurn);
   }, [isMyTurn]);
+
 
   const handleDragStartPlayerCard = (event: React.DragEvent<HTMLDivElement>, card: WordCardData) => {
     if (!isMyTurn) return;
@@ -94,11 +155,11 @@ export default function LingoKubPage() {
     const cardCurrentlyAtTarget = newGrid[targetRow][targetCol];
 
     if (source === 'hand') {
-      if (cardCurrentlyAtTarget) { // Trying to drop from hand onto an occupied cell
+      if (cardCurrentlyAtTarget) { 
         const isTargetPlacedThisTurn = newCardsPlacedThisTurn.some(
           item => item.cardId === cardCurrentlyAtTarget.id && item.originalRowOnGrid === targetRow && item.originalColOnGrid === targetCol
         );
-        if (isTargetPlacedThisTurn) { // Swap: card from hand to grid, card from grid (placed this turn) to hand
+        if (isTargetPlacedThisTurn) { 
           newGrid[targetRow][targetCol] = droppedCard;
           newPlayerCards = newPlayerCards.filter(c => c.id !== droppedCard.id).concat(cardCurrentlyAtTarget);
           newCardsPlacedThisTurn = newCardsPlacedThisTurn
@@ -109,17 +170,16 @@ export default function LingoKubPage() {
           setDraggedItem(null);
           return;
         }
-      } else { // Dropping from hand to an empty cell
+      } else { 
         newGrid[targetRow][targetCol] = droppedCard;
         newPlayerCards = newPlayerCards.filter(c => c.id !== droppedCard.id);
         newCardsPlacedThisTurn.push({ cardId: droppedCard.id, originalRowOnGrid: targetRow, originalColOnGrid: targetCol });
       }
-    } else if (source === 'grid' && sourceRow !== undefined && sourceCol !== undefined) { // Dragging from grid
-        if (cardCurrentlyAtTarget) { // Swapping two cards on the grid
+    } else if (source === 'grid' && sourceRow !== undefined && sourceCol !== undefined) { 
+        if (cardCurrentlyAtTarget) { 
             newGrid[targetRow][targetCol] = droppedCard;
             newGrid[sourceRow][sourceCol] = cardCurrentlyAtTarget;
 
-            // Update positions in cardsPlacedThisTurn if they were placed this turn
             const droppedCardIndex = newCardsPlacedThisTurn.findIndex(item => item.cardId === droppedCard.id && item.originalRowOnGrid === sourceRow && item.originalColOnGrid === sourceCol);
             if (droppedCardIndex !== -1) {
                 newCardsPlacedThisTurn[droppedCardIndex] = { ...newCardsPlacedThisTurn[droppedCardIndex], originalRowOnGrid: targetRow, originalColOnGrid: targetCol };
@@ -128,10 +188,9 @@ export default function LingoKubPage() {
             if (targetCardIndex !== -1) {
                 newCardsPlacedThisTurn[targetCardIndex] = { ...newCardsPlacedThisTurn[targetCardIndex], originalRowOnGrid: sourceRow, originalColOnGrid: sourceCol };
             }
-        } else { // Moving a card from grid to an empty cell
+        } else { 
             newGrid[targetRow][targetCol] = droppedCard;
             newGrid[sourceRow][sourceCol] = null;
-             // Update position in cardsPlacedThisTurn if it was placed this turn
             const movedCardIndex = newCardsPlacedThisTurn.findIndex(item => item.cardId === droppedCard.id && item.originalRowOnGrid === sourceRow && item.originalColOnGrid === sourceCol);
             if (movedCardIndex !== -1) {
                 newCardsPlacedThisTurn[movedCardIndex] = { ...newCardsPlacedThisTurn[movedCardIndex], originalRowOnGrid: targetRow, originalColOnGrid: targetCol };
@@ -143,7 +202,6 @@ export default function LingoKubPage() {
     setPlayerCards(newPlayerCards);
     setCardsPlacedThisTurn(newCardsPlacedThisTurn);
     
-    // Mock validation (can be expanded)
     if (droppedCard.word === "FOX") {
         setInvalidCells([{row: targetRow, col: targetCol}]);
         toast({ title: "Invalid Placement", description: "FOX cannot be placed here (mock rule).", variant: "destructive" });
@@ -163,13 +221,11 @@ export default function LingoKubPage() {
 
     const { card, sourceRow, sourceCol } = draggedItem;
 
-    // Check if the card was placed this turn
     const cardIndexInPlacedThisTurn = cardsPlacedThisTurn.findIndex(
         (item) => item.cardId === card.id && item.originalRowOnGrid === sourceRow && item.originalColOnGrid === sourceCol
     );
 
     if (cardIndexInPlacedThisTurn !== -1 && sourceRow !== undefined && sourceCol !== undefined) {
-        // Return card to hand
         const newGrid = gridState.map(r => r.slice());
         newGrid[sourceRow][sourceCol] = null;
         setGridState(newGrid);
@@ -183,32 +239,50 @@ export default function LingoKubPage() {
     setDraggedItem(null);
   };
 
-  const addChatMessage = (sender: string, text: string) => {
-    const newMessage: ChatMessageData = {
-      id: Date.now().toString() + Math.random().toString(),
-      sender,
-      text,
-      timestamp: Date.now(),
-    };
-    setChatMessages(prev => [...prev, newMessage]);
-  };
-
   const handleSendMessage = (messageText: string) => {
-    addChatMessage(currentPlayerId, messageText);
-    setTimeout(() => {
-      addChatMessage("player2", "Got it!");
-    }, 1000);
+    if (ws.current && ws.current.readyState === WebSocket.OPEN && localPlayerId) {
+      const newMessage: ChatMessageData = {
+        id: Date.now().toString() + Math.random().toString(), // Client generates unique ID
+        sender: localPlayerId,
+        text: messageText,
+        timestamp: Date.now(),
+      };
+      ws.current.send(JSON.stringify(newMessage));
+    } else {
+      toast({ title: "Chat Error", description: "Not connected to chat server. Message not sent.", variant: "destructive" });
+    }
   };
 
   const handleEndTurn = () => {
     if (!isMyTurn) return;
-    addChatMessage("system", `${currentPlayerId} ended their turn.`);
+    // This would eventually be a message to the server
+    // For now, simulate opponent turn
+    const endTurnMessage: ChatMessageData = {
+        id: Date.now().toString(),
+        sender: 'system',
+        text: `${localPlayerId} ended their turn.`,
+        timestamp: Date.now()
+    };
+    // Broadcast this system message via WebSocket if desired, or handle locally
+    // For now, let's assume server might send such system messages, or game master client
+    // If sending via ws: ws.current?.send(JSON.stringify(endTurnMessage));
+    // If local: setChatMessages(prev => [...prev, endTurnMessage]);
+
     toast({ title: "Turn Ended", description: "Waiting for opponent." });
     setIsMyTurn(false);
-    setCardsPlacedThisTurn([]); // Clear cards placed this turn
+    setCardsPlacedThisTurn([]); 
     
+    // Simulated opponent turn
     setTimeout(() => {
-        addChatMessage("system", "Player 2 made a move. Your turn!");
+        const opponentTurnMessage: ChatMessageData = {
+            id: Date.now().toString(),
+            sender: 'system',
+            text: `Opponent made a move. Your turn, ${localPlayerId}!`,
+            timestamp: Date.now()
+        };
+        // If sending via ws: ws.current?.send(JSON.stringify(opponentTurnMessage));
+        // If local: setChatMessages(prev => [...prev, opponentTurnMessage]);
+        setChatMessages(prev => [...prev, opponentTurnMessage]); // Keep local for now
         toast({ title: "Your Turn!", description: "Opponent has finished their move." });
         setIsMyTurn(true);
     }, 5000);
@@ -218,11 +292,23 @@ export default function LingoKubPage() {
     setGridState(initialGridState());
     setPlayerCards(initialPlayerCards);
     setMockDeck(initialMockDeck);
-    setIsMyTurn(currentPlayerId === "player1");
+    setIsMyTurn(true); // Reset turn to player 1 (or based on actual player logic)
+    setOpponentIsPlaying(false);
     setInvalidCells([]);
-    setChatMessages([]);
+    // setChatMessages([]); // Keep chat history or clear? For now, let's keep it.
     setCardsPlacedThisTurn([]);
-    addChatMessage("system", "New game started!");
+
+    const newGameMessage: ChatMessageData = {
+        id: Date.now().toString(),
+        sender: 'system',
+        text: `New game started by ${localPlayerId}!`,
+        timestamp: Date.now()
+    };
+    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+        ws.current.send(JSON.stringify(newGameMessage));
+    } else {
+        setChatMessages(prev => [...prev, newGameMessage]); // show locally if WS fails
+    }
     toast({ title: "New Game", description: "The board has been reset." });
   };
 
@@ -239,8 +325,20 @@ export default function LingoKubPage() {
       setPlayerCards(prev => [...prev, drawnCard]);
       setMockDeck(newDeck);
       toast({ title: "Card Drawn", description: `You drew: ${drawnCard.word}`});
-      addChatMessage("system", `${currentPlayerId} drew a card and ended their turn.`);
-      handleEndTurn(); // Drawing a card ends the turn
+      
+      const drawCardMessage: ChatMessageData = {
+        id: Date.now().toString(),
+        sender: 'system',
+        text: `${localPlayerId} drew a card and ended their turn.`,
+        timestamp: Date.now()
+      };
+      // if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+      //   ws.current.send(JSON.stringify(drawCardMessage));
+      // } else {
+      //   setChatMessages(prev => [...prev, drawCardMessage]);
+      // }
+      setChatMessages(prev => [...prev, drawCardMessage]); // Keep local for now
+      handleEndTurn(); 
     }
   };
 
@@ -251,7 +349,7 @@ export default function LingoKubPage() {
           <Dices className="h-7 w-7 sm:h-8 sm:w-8 text-primary" />
           <h1 className="text-xl sm:text-2xl font-headline text-primary">LingoKub</h1>
         </div>
-        <PlayerTurnIndicator isMyTurn={isMyTurn} currentPlayerName={isMyTurn ? "You" : "Opponent"} />
+        <PlayerTurnIndicator isMyTurn={isMyTurn} currentPlayerName={isMyTurn ? localPlayerId || "You" : "Opponent"} />
       </header>
 
       <div className="flex flex-1 overflow-hidden">
@@ -295,7 +393,7 @@ export default function LingoKubPage() {
             <ChatPanel 
               messages={chatMessages} 
               onSendMessage={handleSendMessage}
-              currentPlayerId={currentPlayerId}
+              currentPlayerId={localPlayerId} // Use localPlayerId for styling self-messages
             />
           </div>
         </aside>
