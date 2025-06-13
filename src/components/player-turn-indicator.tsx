@@ -39,8 +39,12 @@ export function PlayerTurnIndicator({ isMyTurn, currentPlayerId, playerProfiles 
       } else {
          displayText = "Opponent's Turn";
       }
+    } else if (Object.keys(playerProfiles).length > 0 && !isMyTurn) {
+      // Fallback if there are other players but not a single identifiable opponent
+      // or if currentPlayerId is not yet defined but it's not my turn.
+      displayText = "Waiting for Player...";
     } else {
-      displayText = "Opponent's Turn";
+      displayText = "Opponent's Turn"; // Default if no other logic applies
     }
   }
 
@@ -61,4 +65,3 @@ export function PlayerTurnIndicator({ isMyTurn, currentPlayerId, playerProfiles 
     </div>
   );
 }
-

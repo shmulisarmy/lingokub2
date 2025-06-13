@@ -37,7 +37,7 @@ const generatePlayerId = () => `player-${Math.random().toString(36).substring(2,
 export default function LingoKubPage() {
   const [gridState, setGridState] = useState<GridState>(initialGridState());
   const [playerCards, setPlayerCards] = useState<WordCardData[]>(initialPlayerCards);
-  const [isMyTurn, setIsMyTurn] = useState<boolean>(false); // Default to false
+  const [isMyTurn, setIsMyTurn] = useState<boolean>(false); // Default to false, server will assign
   const [opponentIsPlaying, setOpponentIsPlaying] = useState<boolean>(false);
   const [invalidCells, setInvalidCells] = useState<{ row: number; col: number }[]>([]);
   const [chatMessages, setChatMessages] = useState<ChatMessageData[]>([]);
@@ -126,7 +126,7 @@ export default function LingoKubPage() {
       console.error('WebSocket error:', error);
       toast({ title: "Chat Connection Error", description: "Could not connect to the chat server.", variant: "destructive" });
     };
-  }, [toast]); // Removed localPlayerProfile from dependencies to avoid re-connecting on profile change
+  }, [toast]);
 
 
   useEffect(() => {
@@ -146,15 +146,12 @@ export default function LingoKubPage() {
             const storedProfile = JSON.parse(storedProfileRaw) as PlayerProfile;
             if (storedProfile.username && storedProfile.avatarUrl) {
                 setLocalPlayerProfile(storedProfile);
-            } else {
-                 // Profile dialog will be triggered by connectWebSocket if needed
             }
         } catch (e) {
             console.error("Error parsing stored profile on init", e);
             localStorage.removeItem('lingokubUserProfile'); 
         }
     } 
-    // Profile dialog is triggered in connectWebSocket onopen if profile isn't set up
     
     if (currentId) {
       connectWebSocket(currentId);
@@ -167,7 +164,6 @@ export default function LingoKubPage() {
 
 
   useEffect(() => {
-    // This effect now reflects the server-driven or initial assignment of isMyTurn
     setOpponentIsPlaying(!isMyTurn);
   }, [isMyTurn]);
 
@@ -334,30 +330,27 @@ export default function LingoKubPage() {
     }
 
     toast({ title: "Turn Ended", description: "Waiting for opponent." });
-    setIsMyTurn(false); // Current player's turn ends locally
+    setIsMyTurn(false); 
     setCardsPlacedThisTurn([]); 
     
-    // Server will now dictate who's turn it is next via SET_INITIAL_TURN or a new TURN_UPDATE message
-    // The setTimeout for opponent simulation is removed as server should control turn flow
-    // For now, with SET_INITIAL_TURN, only one player actively plays.
-    // To make it switch, server needs to handle END_TURN message and assign next player.
-    
-    // Placeholder for proper server-driven turn change:
-    // If we want to keep the local simulation for the active player:
-    if (localPlayerId === Object.keys(playerProfiles)[0] ) { // Hack: if I am the "first" player
+    // This is a local simulation for the "first" player.
+    // A proper multiplayer setup would have the server dictate turn changes.
+    const connectedPlayerIds = Object.keys(playerProfiles);
+    if (connectedPlayerIds.length > 0 && localPlayerId === connectedPlayerIds[0] ) { 
         setTimeout(() => {
-            const opponentDisplayName = 'Opponent'; 
+            const opponentDisplayName = playerProfiles[localPlayerId]?.username || localPlayerId || 'Opponent'; 
+            const nextTurnMessageText = `Opponent made a move. Your turn, ${opponentDisplayName}!`;
             const opponentTurnSystemMessage: WebSocketMessage = {
                 type: 'SYSTEM_MESSAGE',
-                payload: { text: `${opponentDisplayName} made a move. Your turn, ${playerProfiles[localPlayerId]?.username || localPlayerId}!` }
+                payload: { text: nextTurnMessageText }
             };
              if (ws.current && ws.current.readyState === WebSocket.OPEN) {
                 ws.current.send(JSON.stringify(opponentTurnSystemMessage));
             } else { 
-                setChatMessages(prev => [...prev, {id: Date.now().toString(), sender:'system', text: `${opponentDisplayName} made a move. Your turn, ${playerProfiles[localPlayerId]?.username || localPlayerId}!`, timestamp: Date.now()}]);
+                setChatMessages(prev => [...prev, {id: Date.now().toString(), sender:'system', text: nextTurnMessageText, timestamp: Date.now()}]);
             }
             toast({ title: "Your Turn!", description: "Opponent has finished their move." });
-            setIsMyTurn(true); // Give turn back to self if simulating
+            setIsMyTurn(true); 
         }, 3000);
     }
   };
@@ -366,7 +359,6 @@ export default function LingoKubPage() {
     setGridState(initialGridState());
     setPlayerCards(initialPlayerCards);
     setMockDeck(initialMockDeck);
-    // setIsMyTurn(true); // Initial turn will be set by server now
     setOpponentIsPlaying(false);
     setInvalidCells([]);
     setCardsPlacedThisTurn([]);
@@ -377,8 +369,9 @@ export default function LingoKubPage() {
     };
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
         ws.current.send(JSON.stringify(newGameSystemMessage));
-        // Potentially, server should reset its 'isFirstPlayerTurnAssigned' and re-assign turn
-        // For now, client that clicks new game might not immediately get the turn unless server logic is added for this.
+        // Server should ideally reset its 'isFirstPlayerTurnAssigned' and re-assign turn.
+        // For now, the client initiating "New Game" might not immediately get the turn
+        // if they weren't the first player initially.
     } else {
         setChatMessages(prev => [...prev, { id: Date.now().toString(), sender: 'system', text: (newGameSystemMessage.payload as {text: string}).text, timestamp: Date.now()}]);
     }
@@ -398,8 +391,6 @@ export default function LingoKubPage() {
       setPlayerCards(prev => [...prev, drawnCard]);
       setMockDeck(newDeck);
       toast({ title: "Card Drawn", description: `You drew: ${drawnCard.word}`});
-      
-      // Drawing a card now also ends the turn using the same logic
       handleEndTurn(); 
     }
   };
@@ -422,7 +413,6 @@ export default function LingoKubPage() {
           />
         </div>
       </header>
-      hello miner dukim
 
       <div className="flex flex-1 overflow-hidden">
         <main className="flex-1 p-2 sm:p-4 flex flex-col items-center justify-center relative overflow-auto">
@@ -480,4 +470,3 @@ export default function LingoKubPage() {
     </div>
   );
 }
-

@@ -57,4 +57,3 @@ export interface CardPlacedThisTurn {
   originalRowOnGrid: number; 
   originalColOnGrid: number; 
 }
-
