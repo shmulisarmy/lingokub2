@@ -333,26 +333,24 @@ export default function LingoKubPage() {
     setIsMyTurn(false); 
     setCardsPlacedThisTurn([]); 
     
-    // This is a local simulation for the "first" player.
-    // A proper multiplayer setup would have the server dictate turn changes.
-    const connectedPlayerIds = Object.keys(playerProfiles);
-    if (connectedPlayerIds.length > 0 && localPlayerId === connectedPlayerIds[0] ) { 
-        setTimeout(() => {
-            const opponentDisplayName = playerProfiles[localPlayerId]?.username || localPlayerId || 'Opponent'; 
-            const nextTurnMessageText = `Opponent made a move. Your turn, ${opponentDisplayName}!`;
-            const opponentTurnSystemMessage: WebSocketMessage = {
-                type: 'SYSTEM_MESSAGE',
-                payload: { text: nextTurnMessageText }
-            };
-             if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-                ws.current.send(JSON.stringify(opponentTurnSystemMessage));
-            } else { 
-                setChatMessages(prev => [...prev, {id: Date.now().toString(), sender:'system', text: nextTurnMessageText, timestamp: Date.now()}]);
-            }
-            toast({ title: "Your Turn!", description: "Opponent has finished their move." });
-            setIsMyTurn(true); 
-        }, 3000);
-    }
+    // Simulate opponent's turn and give the turn back to the current player.
+    // This makes the current player effectively play against a "ghost" or themselves with a delay.
+    // This is NOT true multiplayer turn passing yet.
+    setTimeout(() => {
+        const currentTurnPlayerDisplayName = playerProfiles[localPlayerId]?.username || localPlayerId || 'Player'; 
+        const nextTurnMessageText = `Opponent made a move. Your turn, ${currentTurnPlayerDisplayName}!`;
+        const opponentTurnSystemMessage: WebSocketMessage = {
+            type: 'SYSTEM_MESSAGE',
+            payload: { text: nextTurnMessageText }
+        };
+         if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+            ws.current.send(JSON.stringify(opponentTurnSystemMessage));
+        } else { 
+            setChatMessages(prev => [...prev, {id: Date.now().toString(), sender:'system', text: nextTurnMessageText, timestamp: Date.now()}]);
+        }
+        toast({ title: "Your Turn!", description: "Opponent has finished their move." });
+        setIsMyTurn(true); // Current player gets the turn back
+    }, 3000);
   };
   
   const handleNewGame = () => {
@@ -371,7 +369,7 @@ export default function LingoKubPage() {
         ws.current.send(JSON.stringify(newGameSystemMessage));
         // Server should ideally reset its 'isFirstPlayerTurnAssigned' and re-assign turn.
         // For now, the client initiating "New Game" might not immediately get the turn
-        // if they weren't the first player initially.
+        // if they weren't the first player initially. Client will wait for SET_INITIAL_TURN.
     } else {
         setChatMessages(prev => [...prev, { id: Date.now().toString(), sender: 'system', text: (newGameSystemMessage.payload as {text: string}).text, timestamp: Date.now()}]);
     }
