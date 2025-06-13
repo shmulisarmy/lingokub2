@@ -1,6 +1,7 @@
+
 "use client";
 
-import type React from 'react';
+import React, { useState } from 'react'; // Changed from 'type React' to 'React, { useState }'
 import { WordCard } from "./word-card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { WordCardData } from '@/types';
@@ -14,7 +15,7 @@ interface PlayerHandProps {
 }
 
 export function PlayerHand({ cards, isPlayerTurn, onDragStartCard, onDropCardToHandArea }: PlayerHandProps) {
-  const [isDragOver, setIsDragOver] = React.useState(false);
+  const [isDragOver, setIsDragOver] = useState(false); // Changed from React.useState to useState
 
   const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
