@@ -422,6 +422,7 @@ export default function LingoKubPage() {
           />
         </div>
       </header>
+      hello miner dukim
 
       <div className="flex flex-1 overflow-hidden">
         <main className="flex-1 p-2 sm:p-4 flex flex-col items-center justify-center relative overflow-auto">
