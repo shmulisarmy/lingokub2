@@ -3,49 +3,34 @@
 
 import { Badge } from "@/components/ui/badge";
 import { User } from "lucide-react";
-import type { PlayerProfile } from "@/types";
+import type { PublicPlayerInfo } from '@/GameState'; // Use server-defined type
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 interface PlayerTurnIndicatorProps {
   isMyTurn: boolean;
   currentPlayerId?: string; 
-  playerProfiles: Record<string, PlayerProfile>;
+  allPlayers: PublicPlayerInfo[]; // Now receives all players
 }
 
-export function PlayerTurnIndicator({ isMyTurn, currentPlayerId, playerProfiles }: PlayerTurnIndicatorProps) {
+export function PlayerTurnIndicator({ isMyTurn, currentPlayerId, allPlayers }: PlayerTurnIndicatorProps) {
   let displayName = "Opponent";
   let avatarUrl: string | undefined = undefined;
-  let displayText = "Opponent's Turn";
+  let displayText = "Waiting for players..."; // Default text
 
-  if (isMyTurn && currentPlayerId) {
-    const profile = playerProfiles[currentPlayerId];
-    displayName = profile?.username || "You"; // Default to "You" if no username
-    avatarUrl = profile?.avatarUrl;
-    if (displayName === "You") {
+  const turnPlayer = allPlayers.find(p => p.isTurn);
+
+  if (turnPlayer) {
+    if (turnPlayer.playerId === currentPlayerId) {
+      displayName = turnPlayer.username || "You";
+      avatarUrl = turnPlayer.avatarUrl;
       displayText = "Your Turn";
     } else {
+      displayName = turnPlayer.username || "Opponent";
+      avatarUrl = turnPlayer.avatarUrl;
       displayText = `${displayName}'s Turn`;
     }
-  } else {
-    // Potentially find an opponent's name if only two players and IDs are known
-    // For now, default to "Opponent's Turn"
-    const opponentIds = Object.keys(playerProfiles).filter(id => id !== currentPlayerId);
-    if (opponentIds.length === 1) {
-      const opponentProfile = playerProfiles[opponentIds[0]];
-      if (opponentProfile && opponentProfile.username) {
-        displayText = `${opponentProfile.username}'s Turn`;
-        avatarUrl = opponentProfile.avatarUrl; // Show opponent avatar when it's their turn
-        displayName = opponentProfile.username;
-      } else {
-         displayText = "Opponent's Turn";
-      }
-    } else if (Object.keys(playerProfiles).length > 0 && !isMyTurn) {
-      // Fallback if there are other players but not a single identifiable opponent
-      // or if currentPlayerId is not yet defined but it's not my turn.
-      displayText = "Waiting for Player...";
-    } else {
-      displayText = "Opponent's Turn"; // Default if no other logic applies
-    }
+  } else if (allPlayers.length > 0) {
+    displayText = "Waiting for turn..."; // Game started, but turn not clear
   }
 
 
