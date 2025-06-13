@@ -1,8 +1,6 @@
-
 "use client";
 
-import type React from 'react';
-import { useState } from 'react'; // Import useState directly
+import React, { useState } from 'react'; // Import React for useState
 import { cn } from "@/lib/utils";
 import type { WordCardData } from '@/types';
 import { WordCard } from './word-card';
@@ -15,6 +13,7 @@ interface GridCellProps {
   isPlayerTurn: boolean;
   onDrop: (event: React.DragEvent<HTMLDivElement>, row: number, col: number) => void;
   onDragStartCardInCell: (event: React.DragEvent<HTMLDivElement>, card: WordCardData, row: number, col: number) => void;
+  isPlacedThisTurn?: boolean; // To indicate if the card in this cell was placed this turn
 }
 
 export function GridCell({
@@ -25,8 +24,9 @@ export function GridCell({
   isPlayerTurn,
   onDrop,
   onDragStartCardInCell,
+  isPlacedThisTurn = false,
 }: GridCellProps) {
-  const [isDragOver, setIsDragOver] = useState(false); // Use useState directly
+  const [isDragOver, setIsDragOver] = useState(false);
 
   const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -74,6 +74,7 @@ export function GridCell({
           isInvalid={isInvalid}
           onDragStart={isPlayerTurn ? (e) => handleCardDragStart(e, card) : undefined}
           className="w-full h-full"
+          isPlacedThisTurn={isPlacedThisTurn} // Pass to WordCard for potential styling
         />
       )}
     </div>

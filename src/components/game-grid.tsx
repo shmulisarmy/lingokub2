@@ -1,7 +1,7 @@
 "use client";
 
 import type React from 'react';
-import type { GridState, WordCardData } from '@/types';
+import type { GridState, WordCardData, CardPlacedThisTurn } from '@/types';
 import { GridCell } from './grid-cell';
 
 interface GameGridProps {
@@ -10,6 +10,7 @@ interface GameGridProps {
   isPlayerTurn: boolean;
   onDropCardToCell: (event: React.DragEvent<HTMLDivElement>, row: number, col: number) => void;
   onDragStartCardInCell: (event: React.DragEvent<HTMLDivElement>, card: WordCardData, row: number, col: number) => void;
+  cardsPlacedThisTurn: CardPlacedThisTurn[]; // Added to pass down for styling/logic if needed
 }
 
 const ROWS = 5;
@@ -20,7 +21,8 @@ export function GameGrid({
   invalidCells, 
   isPlayerTurn,
   onDropCardToCell,
-  onDragStartCardInCell 
+  onDragStartCardInCell,
+  cardsPlacedThisTurn 
 }: GameGridProps) {
   return (
     <div 
@@ -32,18 +34,25 @@ export function GameGrid({
       aria-label="Game Grid"
     >
       {gridState.map((rowItems, rowIndex) =>
-        rowItems.map((card, colIndex) => (
-          <GridCell
-            key={`${rowIndex}-${colIndex}`}
-            row={rowIndex}
-            col={colIndex}
-            card={card}
-            isInvalid={invalidCells.some(cell => cell.row === rowIndex && cell.col === colIndex)}
-            isPlayerTurn={isPlayerTurn}
-            onDrop={onDropCardToCell}
-            onDragStartCardInCell={onDragStartCardInCell}
-          />
-        ))
+        rowItems.map((card, colIndex) => {
+          const isPlacedThisTurn = card ? cardsPlacedThisTurn.some(
+            item => item.cardId === card.id && item.originalRowOnGrid === rowIndex && item.originalColOnGrid === colIndex
+          ) : false;
+          
+          return (
+            <GridCell
+              key={`${rowIndex}-${colIndex}`}
+              row={rowIndex}
+              col={colIndex}
+              card={card}
+              isInvalid={invalidCells.some(cell => cell.row === rowIndex && cell.col === colIndex)}
+              isPlayerTurn={isPlayerTurn}
+              onDrop={onDropCardToCell}
+              onDragStartCardInCell={onDragStartCardInCell}
+              isPlacedThisTurn={isPlacedThisTurn} // Pass this down to GridCell
+            />
+          );
+        })
       )}
     </div>
   );
