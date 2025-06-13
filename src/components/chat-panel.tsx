@@ -1,3 +1,4 @@
+
 "use client";
 
 import type React from 'react';
@@ -7,17 +8,18 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Send, MessageCircle } from "lucide-react";
-import type { ChatMessageData } from '@/types';
+import type { ChatMessageData, PlayerProfile } from '@/types';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from '@/lib/utils';
 
 interface ChatPanelProps {
   messages: ChatMessageData[];
   onSendMessage: (messageText: string) => void;
-  currentPlayerId: string; // To identify user's own messages
+  currentPlayerId: string;
+  playerProfiles: Record<string, PlayerProfile>;
 }
 
-export function ChatPanel({ messages, onSendMessage, currentPlayerId }: ChatPanelProps) {
+export function ChatPanel({ messages, onSendMessage, currentPlayerId, playerProfiles }: ChatPanelProps) {
   const [newMessage, setNewMessage] = useState("");
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
@@ -30,7 +32,6 @@ export function ChatPanel({ messages, onSendMessage, currentPlayerId }: ChatPane
   };
 
   useEffect(() => {
-    // Auto-scroll to bottom
     if (scrollAreaRef.current) {
       const scrollableViewport = scrollAreaRef.current.querySelector('div[data-radix-scroll-area-viewport]');
       if (scrollableViewport) {
@@ -39,9 +40,8 @@ export function ChatPanel({ messages, onSendMessage, currentPlayerId }: ChatPane
     }
   }, [messages]);
 
-  const getSenderInitial = (sender: string) => {
-    if (sender.toLowerCase() === 'system') return 'S';
-    return sender.charAt(0).toUpperCase();
+  const getSenderProfile = (senderId: string): PlayerProfile | null => {
+    return playerProfiles[senderId] || null;
   }
 
   return (
@@ -53,49 +53,70 @@ export function ChatPanel({ messages, onSendMessage, currentPlayerId }: ChatPane
       
       <ScrollArea className="flex-1 p-3" ref={scrollAreaRef}>
         <div className="space-y-3">
-          {messages.map((msg) => (
-            <div
-              key={msg.id}
-              className={cn(
-                "flex items-start gap-2 text-sm",
-                msg.sender === currentPlayerId ? "justify-end" : "justify-start"
-              )}
-            >
-              {msg.sender !== currentPlayerId && (
-                <Avatar className="h-8 w-8">
-                  <AvatarFallback className="bg-primary text-primary-foreground">
-                    {getSenderInitial(msg.sender)}
-                  </AvatarFallback>
-                </Avatar>
-              )}
-              <div 
+          {messages.map((msg) => {
+            const profile = msg.sender === "system" ? null : getSenderProfile(msg.sender);
+            const displayName = profile?.username || msg.sender;
+            const avatarUrl = profile?.avatarUrl;
+            const isCurrentUser = msg.sender === currentPlayerId;
+
+            if (msg.sender === "system") {
+              return (
+                <div key={msg.id} className="text-center my-2">
+                  <p className="text-xs text-muted-foreground italic bg-muted/50 px-2 py-1 rounded-md inline-block">
+                    {msg.text}
+                  </p>
+                </div>
+              );
+            }
+
+            return (
+              <div
+                key={msg.id}
                 className={cn(
-                  "max-w-[75%] rounded-lg px-3 py-2",
-                  msg.sender === currentPlayerId
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-accent text-accent-foreground",
-                  msg.sender === "system" && "bg-muted text-muted-foreground italic w-full text-center"
+                  "flex items-start gap-2.5 text-sm",
+                  isCurrentUser ? "justify-end" : "justify-start"
                 )}
               >
-                <p>{msg.text}</p>
-                {msg.sender !== "system" && (
-                   <p className={cn(
-                     "text-xs opacity-70 mt-0.5",
-                      msg.sender === currentPlayerId ? "text-right" : "text-left"
-                    )}>
-                     {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                   </p>
+                {!isCurrentUser && (
+                  <Avatar className="h-9 w-9">
+                    {avatarUrl && <AvatarImage src={avatarUrl} alt={displayName} data-ai-hint="abstract avatar" />}
+                    <AvatarFallback className="bg-primary text-primary-foreground text-xs">
+                      {displayName.substring(0, 2).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                )}
+                <div className={cn("flex flex-col w-fit max-w-[75%]")}>
+                  {!isCurrentUser && (
+                     <span className="text-xs text-muted-foreground ml-2 mb-0.5">{displayName}</span>
+                  )}
+                  <div 
+                    className={cn(
+                      "rounded-lg px-3 py-2",
+                      isCurrentUser
+                        ? "bg-primary text-primary-foreground rounded-br-none"
+                        : "bg-accent text-accent-foreground rounded-bl-none",
+                    )}
+                  >
+                    <p className="break-words">{msg.text}</p>
+                  </div>
+                  <p className={cn(
+                       "text-xs opacity-70 mt-1",
+                        isCurrentUser ? "text-right mr-1" : "text-left ml-1"
+                      )}>
+                       {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </p>
+                </div>
+                {isCurrentUser && (
+                   <Avatar className="h-9 w-9">
+                     {avatarUrl && <AvatarImage src={avatarUrl} alt={displayName} data-ai-hint="abstract avatar"/>}
+                     <AvatarFallback className="bg-secondary text-secondary-foreground text-xs">
+                       {displayName.substring(0, 2).toUpperCase()}
+                     </AvatarFallback>
+                   </Avatar>
                 )}
               </div>
-              {msg.sender === currentPlayerId && (
-                 <Avatar className="h-8 w-8">
-                   <AvatarFallback className="bg-secondary text-secondary-foreground">
-                     {getSenderInitial(msg.sender)}
-                   </AvatarFallback>
-                 </Avatar>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
       </ScrollArea>
       <Separator />
